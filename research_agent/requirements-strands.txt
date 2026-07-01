@@ -1,0 +1,6 @@
+# Extra dependencies for the Strands-SDK port (strands_agent.py / strands_tools.py).
+# The existing pipeline deps (anthropic, docling, …) are unchanged and still required.
+#
+# NOTE: the Strands SDK requires Python 3.10+. The current project venv is 3.9,
+# so these must be installed into a 3.10+ environment (see STRANDS.md).
+strands-agents>=1.0.0
