@@ -4,7 +4,7 @@ Foundational, dependency-light pieces used by both the ``providers`` package
 and the top-level ``research`` orchestration:
 
   - ``Paper`` / ``ParsedPaper``     — shared data types
-  - ``ResearchConfig`` / ``DEFAULT_MODEL`` — configuration
+  - ``ResearchConfig`` / ``DEFAULT_MODEL`` / ``SUMMARY_MODEL`` — configuration
   - ``complete``                    — single non-streaming Claude call
   - ``PaperDownloader``             — PDF download + caching
   - ``PDFParser`` / ``extract_sections`` — docling parse + section extraction
@@ -13,7 +13,7 @@ and the top-level ``research`` orchestration:
 
 from __future__ import annotations
 
-from .config import DEFAULT_MODEL, ResearchConfig
+from .config import DEFAULT_MODEL, SUMMARY_MODEL, ResearchConfig
 from .http import HtmlClient
 from .llm import complete
 from .paper import Paper
@@ -32,6 +32,7 @@ from .web import (
 
 __all__ = [
     "DEFAULT_MODEL",
+    "SUMMARY_MODEL",
     "ResearchConfig",
     "HtmlClient",
     "complete",

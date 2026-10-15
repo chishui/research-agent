@@ -180,8 +180,9 @@ class ProviderSelector:
                 max_tokens=self._config.selector_max_tokens,
                 system=system,
                 tools=self._tools,
+                # Forced tool choice ("any"/"tool") is rejected by Opus 5.5.
                 tool_choice={
-                    "type": "any",
+                    "type": "auto",
                     "disable_parallel_tool_use": not allow_parallel,
                 },
                 messages=[{"role": "user", "content": f"Topic: {topic}"}],
@@ -221,7 +222,7 @@ class PaperSummarizer:
         content = self._build_prompt(parsed)
         text = complete(
             self._client,
-            model=self._config.model,
+            model=self._config.summary_model,
             max_tokens=self._config.summary_max_tokens,
             system=self._SYSTEM,
             user=content,
@@ -337,8 +338,8 @@ class Researcher:
                     source.search(
                         topic,
                         top_n=top_n,
-                        accept=lambda paper: self._relevance.is_relevant(
-                            topic, paper
+                        accept=lambda papers: self._relevance.check(
+                            topic, papers
                         ),
                     )
                 )

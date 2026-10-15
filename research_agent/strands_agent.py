@@ -11,18 +11,22 @@ two implementations stay behaviorally identical; only the framing changed.
 
 Usage:
     report = StrandsResearchAgent().run("effect of intermittent fasting on health")
+    path = StrandsResearchAgent().run_and_save("...")  # report + titled .md file
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 from strands import Agent
 from strands.models import BedrockModel
+from strands.types.exceptions import MaxTokensReachedException
 
 from agent import SYSTEM_PROMPT, _strip_preamble
 from common import DEFAULT_MODEL, ResearchConfig
+from report_writer import write_report
 from strands_tools import ResearchTools
 
 logger = logging.getLogger(__name__)
@@ -35,7 +39,9 @@ class StrandsResearchAgent:
         self,
         config: Optional[ResearchConfig] = None,
         model: str = DEFAULT_MODEL,
-        max_tokens: int = 10000,
+        # The final turn restates the conclusion plus every paper summary, and
+        # thinking shares this budget, so 10K truncated it.
+        max_tokens: int = 64000,
         region_name: Optional[str] = None,
     ):
         self._config = config or ResearchConfig()
@@ -68,10 +74,34 @@ class StrandsResearchAgent:
             callback_handler=None,
         )
 
-        result = agent(f"Write a literature-review report on: {topic}")
+        try:
+            text = str(agent(f"Write a literature-review report on: {topic}"))
+        except MaxTokensReachedException:
+            # Strands raises instead of returning the truncated turn, which used
+            # to leave stdout empty. It appends the partial message first, so
+            # emit that rather than lose the whole run.
+            logger.warning(
+                "Report hit max_tokens=%d; output is truncated", self._max_tokens
+            )
+            text = "".join(
+                block.get("text", "") for block in agent.messages[-1]["content"]
+            )
         # Strip any preamble before the first Markdown heading; the model often
         # emits "Here is the report:" despite the prompt forbidding it.
-        return _strip_preamble(str(result))
+        return _strip_preamble(text)
+
+    def run_and_save(
+        self, topic: str, out_dir: Optional[Path] = None
+    ) -> tuple[str, Path]:
+        """Research ``topic``, then save the report under an LLM-chosen title.
+
+        Returns the report and the path it was written to.
+        """
+        report = self.run(topic)
+        path = write_report(
+            report, topic, out_dir=out_dir, config=self._config
+        )
+        return report, path
 
 
 # --------------------------------------------------------------------------- #
@@ -79,11 +109,20 @@ class StrandsResearchAgent:
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(
         description="Research-agent report writer (Strands SDK)."
     )
     parser.add_argument("topic", help="Topic or question to research")
+    parser.add_argument(
+        "-o",
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="Directory for the titled Markdown report "
+        f"(default: {ResearchConfig().report_dir})",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -91,4 +130,7 @@ if __name__ == "__main__":
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    print(StrandsResearchAgent().run(args.topic))
+    report, path = StrandsResearchAgent().run_and_save(args.topic, args.out_dir)
+    print(report)
+    # Path goes to stderr so `python strands_agent.py "..." > out.md` stays clean.
+    print(f"Saved report: {path}", file=sys.stderr)

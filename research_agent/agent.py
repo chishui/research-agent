@@ -121,7 +121,8 @@ class ResearchAgent:
         config: Optional[ResearchConfig] = None,
         model: str = DEFAULT_MODEL,
         max_steps: int = 100,
-        max_tokens: int = 10000,
+        # Same budget as the Strands agent; requires the streaming call below.
+        max_tokens: int = 64000,
     ):
         self._config = config or ResearchConfig()
         self._client = client or AnthropicBedrock()
@@ -142,14 +143,21 @@ class ResearchAgent:
         ]
 
         for step in range(1, self._max_steps + 1):
-            response = self._client.messages.create(
+            # Streamed because the SDK refuses non-streaming requests with
+            # max_tokens this large.
+            with self._client.messages.stream(
                 model=self._model,
                 max_tokens=self._max_tokens,
                 system=SYSTEM_PROMPT,
                 tools=self._tools,
                 messages=messages,
-            )
+            ) as stream:
+                response = stream.get_final_message()
 
+            if response.stop_reason == "max_tokens":
+                logger.warning(
+                    "Response hit max_tokens=%d; output is truncated", self._max_tokens
+                )
             if response.stop_reason != "tool_use":
                 # No more tool calls — the agent's text is the final report.
                 # Strip any preamble before the first Markdown heading; the
@@ -221,11 +229,11 @@ def _strip_preamble(text: str) -> str:
     actual '#'. Slice from the first '#' that starts a line; if there is
     no heading, return the text unchanged.
     """
+    if text.lstrip().startswith("#"):
+        return text.lstrip()
     idx = text.find("\n#")
     if idx >= 0:
         return text[idx + 1 :].lstrip()
-    if text.lstrip().startswith("#"):
-        return text.lstrip()
     return text
 
 

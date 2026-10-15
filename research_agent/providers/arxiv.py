@@ -77,7 +77,7 @@ class ArxivProvider(PaperProvider):
             text = complete(
                 self.client,
                 model=self._model,
-                max_tokens=200,
+                max_tokens=2000,  # headroom for thinking
                 system=self._QUERY_SYSTEM,
                 user=f"Topic: {topic}",
             ).strip()

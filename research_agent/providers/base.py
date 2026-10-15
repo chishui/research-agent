@@ -32,9 +32,10 @@ from common import DEFAULT_MODEL, Paper, ParsedPaper, PaperDownloader, PDFParser
 
 logger = logging.getLogger(__name__)
 
-# Predicate the orchestrator passes in to decide whether a candidate is worth
-# fetching (e.g. an LLM relevance check). Defaults to "accept everything".
-AcceptFn = Callable[[Paper], bool]
+# Batch predicate the orchestrator passes in to decide which candidates are
+# worth fetching (e.g. an LLM relevance check): one verdict per paper, in
+# order. Defaults to "accept everything".
+AcceptFn = Callable[[list[Paper]], list[bool]]
 
 
 class PaperProvider(ABC):
@@ -95,7 +96,7 @@ class PaperProvider(ABC):
         successfully, or until ``max_candidates`` papers have been examined.
         Skipped/failed papers don't count toward ``top_n``.
         """
-        accept = accept or (lambda _paper: True)
+        accept = accept or (lambda papers: [True] * len(papers))
         results: list[ParsedPaper] = []
         start = 0
         examined = 0
@@ -112,14 +113,23 @@ class PaperProvider(ABC):
                 break  # source has no more results
             start += len(candidates)
 
-            for paper in candidates:
-                if len(results) >= top_n or examined >= self._max_candidates:
+            # Screen the page in one batch rather than a call per paper.
+            candidates = candidates[: self._max_candidates - examined]
+            try:
+                verdicts = accept(candidates)
+            except Exception:
+                logger.exception("Screening failed; skipping %d papers", len(candidates))
+                examined += len(candidates)
+                continue
+
+            for paper, relevant in zip(candidates, verdicts):
+                if len(results) >= top_n:
                     break
                 examined += 1
+                if not relevant:
+                    logger.info("Skipping off-topic paper: %s", paper.title)
+                    continue
                 try:
-                    if not accept(paper):
-                        logger.info("Skipping off-topic paper: %s", paper.title)
-                        continue
                     parsed = self._fetch(paper)
                     if not parsed.has_content():
                         logger.warning(

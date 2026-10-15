@@ -192,17 +192,17 @@ class ResearchTools:
             paper_ids: Candidate handles to check (e.g. ['p1','p2']).
             topic: The research topic to check relevance against.
         """
+        known = list(dict.fromkeys(h for h in paper_ids if h in self.candidates))
         checker = RelevanceChecker(self.client, self.config)
-        lines = []
-        for handle in paper_ids:
-            try:
-                paper = self._get(handle)
-            except KeyError as exc:
-                lines.append(f"{handle}: error ({exc})")
-                continue
-            relevant = checker.is_relevant(topic, paper)
-            lines.append(f"{handle}: {'relevant' if relevant else 'not relevant'}")
-        return "\n".join(lines)
+        verdicts = dict(
+            zip(known, checker.check(topic, [self.candidates[h] for h in known]))
+        )
+        return "\n".join(
+            f"{h}: {'relevant' if verdicts[h] else 'not relevant'}"
+            if h in verdicts
+            else f"{h}: error (unknown paper handle {h!r})"
+            for h in paper_ids
+        )
 
     # ------------------------------------------------------------------ #
     # Source-routed retrieval                                            #

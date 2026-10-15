@@ -257,17 +257,17 @@ class CheckRelevanceTool(Tool):
     def run(self, tool_input: dict, ctx: ToolContext) -> str:
         topic = tool_input["topic"]
         handles = tool_input["paper_ids"]
+        known = list(dict.fromkeys(h for h in handles if h in ctx.candidates))
         checker = RelevanceChecker(ctx.client, ctx.config)
-        lines = []
-        for handle in handles:
-            try:
-                paper = ctx.get(handle)
-            except KeyError as exc:
-                lines.append(f"{handle}: error ({exc})")
-                continue
-            relevant = checker.is_relevant(topic, paper)
-            lines.append(f"{handle}: {'relevant' if relevant else 'not relevant'}")
-        return "\n".join(lines)
+        verdicts = dict(
+            zip(known, checker.check(topic, [ctx.candidates[h] for h in known]))
+        )
+        return "\n".join(
+            f"{h}: {'relevant' if verdicts[h] else 'not relevant'}"
+            if h in verdicts
+            else f"{h}: error (unknown paper handle {h!r})"
+            for h in handles
+        )
 
 
 # --------------------------------------------------------------------------- #
